@@ -14,7 +14,8 @@ const timeInterval = 1000; // 1 second
 const drawCmd = {
     drawWords: 0,
     redrawWords: 2,
-    drawTimer: 1
+    drawTimer: 1,
+    moveLetters: 3
 };
 
 const problemOptions = {
@@ -27,10 +28,17 @@ const problemOptions = {
     flip: {
         code: 2
     },
+    move: {
+        code: 3
+    }
 
 }
 let intervalID;
+let timeoutID;
+let moveY = 0;
+const queue = [];
 let gameOver = false;
+let lettersMoving = false;
 
 document.addEventListener('DOMContentLoaded', startGame)
 document.addEventListener('keydown', handleKeydown)
@@ -83,7 +91,7 @@ function countTime() {
 }
 
 function writeWords(cmd) {
-    ctx.font = "30px Comic Sans MS";
+    ctx.font = "30pt Comic Sans MS";
     ctx.textAlign = "center";
     const textWidth = ctx.measureText(text).width;
     const letterDistance = textWidth / text.length;
@@ -122,13 +130,15 @@ function handleProblemLetter(x, y, letter, problemLetterObj, letterDistance) {
         switch (problemLetterObj.code) {
             case problemOptions.hide.code:
                 // Don't draw anything = same as hiding
-                return;
                 break;
             case problemOptions.randomColour.code:
                 randomColour(x, y, letter);
                 break;
             case problemOptions.flip.code:
-                flip(x, y, letter);
+                flip(x, y, letter, letterDistance);
+                break;
+            case problemOptions.move.code:
+                move(x, y, letter, letterDistance);
                 break;
         }
 }
@@ -139,21 +149,49 @@ function randomColour(x, y, letter) {
 }
 
 function flip(x, y, letter) {
-    // Make letters upside down
-    ctx.save();
-    ctx.rotate(-Math.PI/2);
+    const textHeight = getTextHeight(ctx.font);
+
+    // 10 for extra offsetting
+    const yDistance = y - 10;
+    ctx.translate(x, yDistance);
+    ctx.rotate(180 * Math.PI / 180);
+    ctx.translate(-x, -yDistance);
     ctx.textAlign = "center";
-    ctx.fillText(letter, -x, -y);
-    ctx.restore();
+    ctx.strokeText(letter, x, y);
+    ctx.resetTransform();
+}
+
+function move(x, y, letter) {
+    const { top, bottom } = canvas.getBoundingClientRect();
+
+    const interval = setInterval(() => {
+        let command = 'down';
+
+        if(moveY >= bottom) command = 'up';
+        if(moveY <= top) command = 'down';
+
+        console.log(moveY, top, bottom)
+
+        switch (command) {
+            case 'up':
+                ctx.strokeText(letter, x, moveY--);
+                mainDraw();
+                break;
+            case 'down':
+                ctx.strokeText(letter, x, moveY++);
+                mainDraw();
+                break;
+        }
+    }, 500)
 }
 
 function getRandomLettersIndexes(limit) {
     let i = 0;
-    const numOfOptions = Object.values(problemOptions).length;
+    const numOfOptions = Object.values(problemOptions);
     while(i < limit) {
         randomLettersIndex.push({
-            index: getRandomLetterIndex(letters),
-            code: 2
+            index: getRandomNumber(letters),
+            code: getRandomNumber(numOfOptions)
         });
         i++;
     }
@@ -168,7 +206,58 @@ function startGame() {
     mainDraw(drawCmd.drawWords);
 }
 
-function getRandomLetterIndex(lettersArr) {
+function getRandomNumber(lettersArr) {
     return Math.floor(Math.random() * lettersArr.length);
 }
 
+const getTextHeight = (fontStyle) => {
+    const text = document.createElement("span");
+    text.textContent = 'text';
+    text.style.font = fontStyle;
+
+    const block = document.createElement("div");
+    block.style.display = "inline-block";
+    block.style.width = "1px";
+    block.style.height = "0px";
+
+    const div = document.createElement("div");
+    div.append(block, text);
+
+    document.body.appendChild(div);
+
+    let result = {};
+
+    try {
+        let blockOffsetTop;
+        let textOffsetTop;
+        let blockTop;
+        let blockBottom;
+        let textTop;
+        let textBottom;
+
+        block.style.verticalAlign = 'baseline';
+        blockTop = block.getBoundingClientRect().top;
+        blockBottom = block.getBoundingClientRect().bottom;
+        textTop = text.getBoundingClientRect().top;
+        textBottom = text.getBoundingClientRect().bottom;
+        blockOffsetTop = blockTop + blockBottom;
+        textOffsetTop = textTop + textBottom;
+        result.ascent = blockOffsetTop - textOffsetTop;
+
+        block.style.verticalAlign = 'bottom';
+        blockTop = block.getBoundingClientRect().top;
+        blockBottom = block.getBoundingClientRect().bottom;
+        textTop = text.getBoundingClientRect().top;
+        textBottom = text.getBoundingClientRect().bottom;
+        blockOffsetTop = blockTop + blockBottom;
+        textOffsetTop = textTop + textBottom;
+        result.height = blockOffsetTop - textOffsetTop;
+
+        result.descent = result.height - result.ascent;
+
+    } finally {
+        div.remove();
+    }
+
+    return result.height;
+}
